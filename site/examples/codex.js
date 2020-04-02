@@ -22,15 +22,13 @@ import { Button, Icon, Toolbar } from '../components'
 
 // Every thing that I want
 // * Full markdown support
-//   * horizontal rule,
 //   * table (tables.js), fenced code block, ~~footnote~~
-//   * ~~heading ID~~, definition list,
+//   * ~~heading ID~~, ~~definition list~~,
 // * For read view (read-only.js)
-// * LaTeX
-//   * Inline LaTeX
+//
 // * Shortcuts
 //
-// * Codepen, Github, video (YT, Vimeo) (embeds.js)
+// * Codepen, StackOverFlow, video (YT, Vimeo) (embeds.js)
 // * Internal referencing (editable-voids.js)
 // * Toolbar (hovering-toolbar.js)
 // * We can choose one of the two and have a toggle
@@ -43,10 +41,12 @@ import { Button, Icon, Toolbar } from '../components'
 // * Full markdown support
 //   * h1-6 (need icons for 3-6), bold, italic, underline, inline code
 //   * block quote, ol, ul, image (images.js), link (links.js)
-//   * strikethrough
-//   * task list (still need toolbar button)
+//   * strikethrough, horizontal rule (slightly buggy)
+//   * task list
 // * LaTeX
 //   * Math blocks (katex) (change to textarea and hide LaTeX)
+//   * Inline LaTeX (hide LaTeX)
+//     (breaks when trying to change attributes like underline)
 // * Shortcuts
 //   * bold, italic, underline, code
 
@@ -85,6 +85,8 @@ const CodexExample = () => {
         <MarkButton format="code" icon="code" />
         {/* Strikethrough icon */}
         <MarkButton format="strikethrough" icon="code" />
+        {/* Inline math icon */}
+        <MarkButton format="inline_math" icon="code" />
         <BlockButton format="heading-one" icon="looks_one" />
         <BlockButton format="heading-two" icon="looks_two" />
         {/* Looks three is missing */}
@@ -96,8 +98,10 @@ const CodexExample = () => {
         {/* Looks six is missing */}
         <BlockButton format="heading-six" icon="looks_two" />
         {/* Needs icon */}
-        {/* <BlockButton format="horizontal-rule" icon="looks_two" /> */}
+        <BlockButton format="horizontal-rule" icon="looks_two" />
         <BlockButton format="block-quote" icon="format_quote" />
+        {/* Needs icon */}
+        <BlockButton format="check-list-item" icon="format_list_numbered" />
         <BlockButton format="numbered-list" icon="format_list_numbered" />
         <BlockButton format="bulleted-list" icon="format_list_bulleted" />
       </Toolbar>
@@ -337,8 +341,8 @@ const Element = props => {
       return <h5 {...attributes}>{children}</h5>
     case 'heading-six':
       return <h6 {...attributes}>{children}</h6>
-    // case 'horizontal-rule':
-    //   return <hr {...attributes}></hr>
+    case 'horizontal-rule':
+      return <hr {...attributes}></hr>
     case 'list-item':
       return <li {...attributes}>{children}</li>
     case 'numbered-list':
@@ -379,7 +383,47 @@ const Leaf = ({ attributes, children, leaf }) => {
     children = <del>{children}</del>
   }
 
+  if (leaf.inline_math) {
+    children = <InlineMath children={children} />
+  }
+
   return <span {...attributes}>{children}</span>
+}
+
+class InlineMath extends React.Component {
+  constructor(props) {
+    super(props)
+    this.myRef = React.createRef()
+  }
+
+  componentDidMount() {
+    katex.render(this.props.children.props.text.text, this.myRef.current, {
+      throwOnError: false,
+    })
+  }
+
+  componentDidUpdate() {
+    katex.render(this.props.children.props.text.text, this.myRef.current, {
+      throwOnError: false,
+    })
+  }
+
+  render() {
+    return (
+      <span>
+        <span ref={this.myRef} className={css``} contentEditable={false}></span>
+        <span
+          className={css`
+            margin: 0 4px;
+            padding: 0 4px;
+            background-color: #b7e1e0;
+          `}
+        >
+          {this.props.children}
+        </span>
+      </span>
+    )
+  }
 }
 
 const MathBlock = ({ attributes, children, element }) => {
