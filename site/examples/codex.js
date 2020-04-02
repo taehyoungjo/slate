@@ -16,6 +16,7 @@ import {
 import { Editor, Transforms, Range, Point, createEditor } from 'slate'
 import { css } from 'emotion'
 import { withHistory } from 'slate-history'
+import katex from 'katex'
 
 import { Button, Icon, Toolbar } from '../components'
 
@@ -25,6 +26,8 @@ import { Button, Icon, Toolbar } from '../components'
 //   * table (tables.js), fenced code block, ~~footnote~~
 //   * ~~heading ID~~, definition list,
 // * For read view (read-only.js)
+// * LaTeX
+//   * Inline LaTeX
 // * Shortcuts
 //
 // * Codepen, Github, video (YT, Vimeo) (embeds.js)
@@ -42,6 +45,8 @@ import { Button, Icon, Toolbar } from '../components'
 //   * block quote, ol, ul, image (images.js), link (links.js)
 //   * strikethrough
 //   * task list (still need toolbar button)
+// * LaTeX
+//   * Math blocks (katex) (change to textarea and hide LaTeX)
 // * Shortcuts
 //   * bold, italic, underline, code
 
@@ -60,8 +65,10 @@ const CodexExample = () => {
   const renderLeaf = useCallback(props => <Leaf {...props} />, [])
   const editor = useMemo(
     () =>
-      withLinks(
-        withImages(withChecklists(withHistory(withReact(createEditor()))))
+      withMathBlocks(
+        withLinks(
+          withImages(withChecklists(withHistory(withReact(createEditor()))))
+        )
       ),
     []
   )
@@ -69,6 +76,7 @@ const CodexExample = () => {
   return (
     <Slate editor={editor} value={value} onChange={value => setValue(value)}>
       <Toolbar>
+        <MathBlockButton />
         <LinkButton />
         <InsertImageButton />
         <MarkButton format="bold" icon="format_bold" />
@@ -153,6 +161,22 @@ const isBlockActive = (editor, format) => {
 const isMarkActive = (editor, format) => {
   const marks = Editor.marks(editor)
   return marks ? marks[format] === true : false
+}
+
+const withMathBlocks = editor => {
+  const { isVoid } = editor
+
+  editor.isVoid = element => {
+    return element.type === 'math-block' ? true : isVoid(element)
+  }
+
+  return editor
+}
+
+const insertMathBlock = editor => {
+  const text = { text: '' }
+  const voidNode = { type: 'math-block', children: [text] }
+  Transforms.insertNodes(editor, voidNode)
 }
 
 const withLinks = editor => {
@@ -295,6 +319,8 @@ const insertImage = (editor, url) => {
 const Element = props => {
   const { attributes, children, element } = props
   switch (element.type) {
+    case 'math-block':
+      return <MathBlock {...props} />
     case 'block-quote':
       return <blockquote {...attributes}>{children}</blockquote>
     case 'bulleted-list':
@@ -354,6 +380,68 @@ const Leaf = ({ attributes, children, leaf }) => {
   }
 
   return <span {...attributes}>{children}</span>
+}
+
+const MathBlock = ({ attributes, children, element }) => {
+  const [inputValue, setInputValue] = useState('')
+
+  return (
+    // Need contentEditable=false or Firefox has issues with certain input types.
+    <div {...attributes} contentEditable={false}>
+      <div>
+        <textarea
+          className={css`
+            margin: 8px 0;
+            width: 100%;
+            heigth: auto;
+          `}
+          type="text"
+          value={inputValue}
+          onChange={e => {
+            setInputValue(e.target.value)
+
+            katex.render(e.target.value, e.target.nextElementSibling, {
+              throwOnError: false,
+            })
+          }}
+        ></textarea>
+        {/* <input
+          className={css`
+            margin: 8px 0;
+          `}
+          type="text"
+          value={inputValue}
+          onChange={e => {
+            setInputValue(e.target.value)
+
+            katex.render(e.target.value, e.target.nextElementSibling, {
+              throwOnError: false,
+            })
+          }}
+        /> */}
+        <div
+          className={css`
+            text-align: center;
+          `}
+        ></div>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+const MathBlockButton = () => {
+  const editor = useEditor()
+  return (
+    <Button
+      onMouseDown={event => {
+        event.preventDefault()
+        insertMathBlock(editor)
+      }}
+    >
+      <Icon>add</Icon>
+    </Button>
+  )
 }
 
 const LinkButton = () => {
