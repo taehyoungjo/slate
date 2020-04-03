@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react'
 import imageExtensions from 'image-extensions'
 import isUrl from 'is-url'
 import isHotkey from 'is-hotkey'
@@ -18,24 +18,33 @@ import { css } from 'emotion'
 import { withHistory } from 'slate-history'
 import katex from 'katex'
 
-import { Button, Icon, Toolbar } from '../components'
+import { Button, Icon, Menu, Toolbar, Portal } from '../components'
 
 // Every thing that I want
 // * Full markdown support
-//   * table (tables.js), fenced code block, ~~footnote~~
-//   * ~~heading ID~~, ~~definition list~~,
+//   * table (tables.js)
+//   * fenced code block (For this, codemirror, highlight.js are options)
+//   * ~~footnote~~,~~heading ID~~, ~~definition list~~,
 // * For read view (read-only.js)
-//
-// * Shortcuts
-//
+
+// * Toolbar (hovering-toolbar.js)
+//   * code, strikethrough, inline_math
+//   * table options, image options
+
 // * Codepen, StackOverFlow, video (YT, Vimeo) (embeds.js)
 // * Internal referencing (editable-voids.js)
-// * Toolbar (hovering-toolbar.js)
+
 // * We can choose one of the two and have a toggle
 //   (markdown-preview.js)(markdown-shortcuts.js)
-// * mentions.js
+
 // * Adding these in (paste-html.js)
+
+// Maybe
+// * Shortcuts
+//   * math block, inline math, font size (h1-6, p)
+//   * hr, task list, ol, ul, image, link
 // * Potentially for preview (forced-layout.js)
+// * Potentially for referncing users mentions.js
 
 // Every thing I have
 // * Full markdown support
@@ -48,13 +57,18 @@ import { Button, Icon, Toolbar } from '../components'
 //   * Inline LaTeX (hide LaTeX)
 //     (breaks when trying to change attributes like underline)
 // * Shortcuts
-//   * bold, italic, underline, code
+//   * bold, italic, underline, code, strikethrough
+// * Toolbar (hovering-toolbar.js)
+//   * bold, italic, underline
 
 const HOTKEYS = {
   'mod+b': 'bold',
   'mod+i': 'italic',
   'mod+u': 'underline',
   'mod+`': 'code',
+  // May want to change this
+  // I am looking for a hotkeys standard for markdown
+  'mod+s': 'strikethrough',
 }
 
 const LIST_TYPES = ['numbered-list', 'bulleted-list']
@@ -75,6 +89,7 @@ const CodexExample = () => {
 
   return (
     <Slate editor={editor} value={value} onChange={value => setValue(value)}>
+      <HoveringToolbar />
       <Toolbar>
         <MathBlockButton />
         <LinkButton />
@@ -87,6 +102,7 @@ const CodexExample = () => {
         <MarkButton format="strikethrough" icon="code" />
         {/* Inline math icon */}
         <MarkButton format="inline_math" icon="code" />
+        <BlockButton format="code-block" icon="looks_one" />
         <BlockButton format="heading-one" icon="looks_one" />
         <BlockButton format="heading-two" icon="looks_two" />
         {/* Looks three is missing */}
@@ -118,6 +134,16 @@ const CodexExample = () => {
               const mark = HOTKEYS[hotkey]
               toggleMark(editor, mark)
             }
+          }
+        }}
+        onDOMBeforeInput={event => {
+          switch (event.inputType) {
+            case 'formatBold':
+              return toggleFormat(editor, 'bold')
+            case 'formatItalic':
+              return toggleFormat(editor, 'italic')
+            case 'formatUnderline':
+              return toggleFormat(editor, 'underline')
           }
         }}
       />
@@ -165,6 +191,83 @@ const isBlockActive = (editor, format) => {
 const isMarkActive = (editor, format) => {
   const marks = Editor.marks(editor)
   return marks ? marks[format] === true : false
+}
+
+const HoveringToolbar = () => {
+  const ref = useRef()
+  const editor = useSlate()
+
+  useEffect(() => {
+    const el = ref.current
+    const { selection } = editor
+
+    if (!el) {
+      return
+    }
+
+    if (
+      !selection ||
+      !ReactEditor.isFocused(editor) ||
+      Range.isCollapsed(selection) ||
+      Editor.string(editor, selection) === ''
+    ) {
+      el.removeAttribute('style')
+      return
+    }
+
+    const domSelection = window.getSelection()
+    const domRange = domSelection.getRangeAt(0)
+    const rect = domRange.getBoundingClientRect()
+    el.style.opacity = 1
+    el.style.top = `${rect.top + window.pageYOffset - el.offsetHeight}px`
+    el.style.left = `${rect.left +
+      window.pageXOffset -
+      el.offsetWidth / 2 +
+      rect.width / 2}px`
+  })
+
+  return (
+    <Portal>
+      <Menu
+        ref={ref}
+        className={css`
+          padding: 8px 7px 6px;
+          position: absolute;
+          z-index: 1;
+          top: -10000px;
+          left: -10000px;
+          margin-top: -6px;
+          opacity: 0;
+          background-color: #222;
+          border-radius: 4px;
+          transition: opacity 0.75s;
+        `}
+      >
+        <FormatButton format="bold" icon="format_bold" />
+        <FormatButton format="italic" icon="format_italic" />
+        <FormatButton format="underline" icon="format_underlined" />
+        <FormatButton format="code" icon="code" />
+        <FormatButton format="strikethrough" icon="code" />
+        {/* <FormatButton format="inline_math" icon="format_underlined" /> */}
+      </Menu>
+    </Portal>
+  )
+}
+
+const FormatButton = ({ format, icon }) => {
+  const editor = useSlate()
+  return (
+    <Button
+      reversed
+      active={isMarkActive(editor, format)}
+      onMouseDown={event => {
+        event.preventDefault()
+        toggleMark(editor, format)
+      }}
+    >
+      <Icon>{icon}</Icon>
+    </Button>
+  )
 }
 
 const withMathBlocks = editor => {
@@ -327,6 +430,8 @@ const Element = props => {
       return <MathBlock {...props} />
     case 'block-quote':
       return <blockquote {...attributes}>{children}</blockquote>
+    case 'code-block':
+      return <CodeBlock {...props} />
     case 'bulleted-list':
       return <ul {...attributes}>{children}</ul>
     case 'heading-one':
@@ -437,11 +542,15 @@ const MathBlock = ({ attributes, children, element }) => {
           className={css`
             margin: 8px 0;
             width: 100%;
-            heigth: auto;
+            height: 26px;
           `}
           type="text"
           value={inputValue}
           onChange={e => {
+            console.log(e.target)
+            e.target.style.height = ''
+            e.target.style.height = e.target.scrollHeight + 'px'
+
             setInputValue(e.target.value)
 
             katex.render(e.target.value, e.target.nextElementSibling, {
